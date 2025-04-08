@@ -1,0 +1,17 @@
+<tr>
+    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
+        {{ patient.first_name }} {{ patient.last_name }}
+    </td>
+    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+        {{ patient.hospital_number }}
+    </td>
+    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+        {{ patient.nhs_number }}
+    </td>
+    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+        {{ patient.date_of_birth|date:"d M Y" }}
+    </td>
+    <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+        <a href="{% url 'patients:patient_detail' patient.id %}" class="text-blue-600 hover:text-blue-900">View<span class="sr-only">, {{ patient.first_name }} {{ patient.last_name }}</span></a>
+    </td>
+</tr>

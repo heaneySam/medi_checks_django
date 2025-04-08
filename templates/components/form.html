@@ -1,0 +1,91 @@
+{% macro render_field(field) %}
+<div class="space-y-2 relative group">
+    <label for="{{ field.id_for_label }}" class="block text-sm font-medium text-gray-700 transition-colors group-focus-within:text-blue-600">
+        {{ field.label }}
+    </label>
+    <div class="mt-1 relative">
+        {{ field|addclass:'peer block w-full rounded-lg border-gray-300 bg-white px-4 py-3 shadow-sm transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none hover:border-gray-400 sm:text-sm' }}
+        
+        {% if field.errors %}
+        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+            <svg class="h-5 w-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+            </svg>
+        </div>
+        {% endif %}
+
+        {% if field.help_text %}
+        <p class="mt-2 text-sm text-gray-500 transition-opacity duration-200 opacity-80 group-hover:opacity-100">
+            {{ field.help_text }}
+        </p>
+        {% endif %}
+
+        {% for error in field.errors %}
+        <p class="mt-2 text-sm text-red-600 flex items-center space-x-1">
+            <svg class="h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+            </svg>
+            <span>{{ error }}</span>
+        </p>
+        {% endfor %}
+    </div>
+
+    {% if field.field.widget.input_type == 'text' or field.field.widget.input_type == 'email' %}
+    <div class="absolute bottom-0 left-0 h-0.5 w-0 bg-blue-500 transition-all duration-300 group-focus-within:w-full"></div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% macro render_select(field) %}
+<div class="space-y-2 relative group">
+    <label for="{{ field.id_for_label }}" class="block text-sm font-medium text-gray-700 transition-colors group-focus-within:text-blue-600">
+        {{ field.label }}
+    </label>
+    <div class="mt-1 relative">
+        <select name="{{ field.name }}" id="{{ field.id_for_label }}" 
+                class="peer block w-full rounded-lg border-gray-300 bg-white pl-4 pr-10 py-3 shadow-sm transition-all duration-200 
+                       focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none hover:border-gray-400 
+                       appearance-none sm:text-sm">
+            {{ field }}
+        </select>
+        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+            <svg class="h-5 w-5 text-gray-400 transition-colors group-hover:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+        </div>
+
+        {% if field.help_text %}
+        <p class="mt-2 text-sm text-gray-500 transition-opacity duration-200 opacity-80 group-hover:opacity-100">
+            {{ field.help_text }}
+        </p>
+        {% endif %}
+
+        {% for error in field.errors %}
+        <p class="mt-2 text-sm text-red-600 flex items-center space-x-1">
+            <svg class="h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+            </svg>
+            <span>{{ error }}</span>
+        </p>
+        {% endfor %}
+    </div>
+</div>
+{% endmacro %}
+
+{% macro render_checkbox(field) %}
+<div class="relative flex items-start py-4 group">
+    <div class="min-w-0 flex-1 text-sm">
+        <label for="{{ field.id_for_label }}" class="font-medium text-gray-700 select-none transition-colors group-hover:text-gray-900">
+            {{ field.label }}
+        </label>
+        {% if field.help_text %}
+        <p class="text-gray-500 transition-opacity duration-200 opacity-80 group-hover:opacity-100">
+            {{ field.help_text }}
+        </p>
+        {% endif %}
+    </div>
+    <div class="ml-3 flex h-5 items-center">
+        {{ field|addclass:'h-4 w-4 rounded border-gray-300 text-blue-600 transition-colors focus:ring-blue-500 focus:ring-offset-2 group-hover:border-gray-400' }}
+    </div>
+</div>
+{% endmacro %}

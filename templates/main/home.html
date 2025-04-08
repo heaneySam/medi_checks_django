@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="bg-white shadow-xl rounded-lg p-6">
+    <h1 class="text-3xl font-bold text-gray-800 mb-4">Welcome to Critical Meds</h1>
+    <p class="text-gray-600 mb-4">Your trusted platform for managing critical medications.</p>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="bg-blue-50 p-4 rounded-lg">
+            <h2 class="text-xl font-semibold text-blue-800 mb-2">Track Inventory</h2>
+            <p class="text-blue-600">Monitor your medication stock levels in real-time.</p>
+        </div>
+        
+        <div class="bg-green-50 p-4 rounded-lg">
+            <h2 class="text-xl font-semibold text-green-800 mb-2">Set Alerts</h2>
+            <p class="text-green-600">Get notified when stock levels are low or expiration dates approach.</p>
+        </div>
+        
+        <div class="bg-purple-50 p-4 rounded-lg">
+            <h2 class="text-xl font-semibold text-purple-800 mb-2">Generate Reports</h2>
+            <p class="text-purple-600">Access detailed analytics and usage patterns.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

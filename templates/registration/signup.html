@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+{% load form_tags %}
+
+{% block title %}Sign Up - Critical Meds{% endblock %}
+
+{% block content %}
+<div class="min-h-[80vh] gradient-background flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full glass-effect p-8 rounded-xl shadow-xl float-animation">
+        <div class="text-center">
+            <h2 class="text-3xl font-extrabold text-gray-900 mb-2">Create Account</h2>
+            <p class="text-sm text-gray-600 mb-8">
+                Join us to manage critical medications
+            </p>
+        </div>
+        <form class="mt-8 space-y-6" method="POST" x-data="{ loading: false, userType: 'DOCTOR' }" @submit="loading = true">
+            {% csrf_token %}
+            <div class="rounded-md space-y-4">
+                {% for field in form %}
+                    {% if field.name == "user_type" %}
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                {{ field.label }}
+                            </label>
+                            <div class="grid grid-cols-2 gap-4">
+                                <template x-for="type in ['DOCTOR', 'PHARMACIST']">
+                                    <button type="button" 
+                                            @click="userType = type" 
+                                            :class="{ 
+                                                'bg-blue-50 border-blue-500 text-blue-700': userType === type,
+                                                'bg-white border-gray-300 text-gray-700': userType !== type
+                                            }"
+                                            class="px-4 py-2 border-2 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200">
+                                        <span x-text="type.charAt(0) + type.slice(1).toLowerCase()"></span>
+                                    </button>
+                                </template>
+                            </div>
+                            <input type="hidden" name="user_type" :value="userType">
+                        </div>
+                    {% else %}
+                        <div>
+                            <label for="{{ field.id_for_label }}" class="block text-sm font-medium text-gray-700">
+                                {{ field.label }}
+                            </label>
+                            <div class="mt-1 relative">
+                                {{ field|addclass:'appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out' }}
+                                {% if field.errors %}
+                                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                        <svg class="h-5 w-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                        </svg>
+                                    </div>
+                                {% endif %}
+                            </div>
+                            {% if field.errors %}
+                                {% for error in field.errors %}
+                                    <p class="mt-2 text-sm text-red-600">{{ error }}</p>
+                                {% endfor %}
+                            {% endif %}
+                            {% if field.help_text %}
+                                <p class="mt-2 text-sm text-gray-500">{{ field.help_text }}</p>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+
+            <div>
+                <button type="submit" 
+                        class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out"
+                        :class="{ 'opacity-75 cursor-wait': loading }"
+                        :disabled="loading">
+                    <span class="absolute left-0 inset-y-0 flex items-center pl-3">
+                        <svg class="h-5 w-5 text-blue-500 group-hover:text-blue-400" x-show="!loading" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" />
+                        </svg>
+                        <svg class="animate-spin h-5 w-5 text-white" x-show="loading" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </span>
+                    <span x-text="loading ? 'Creating account...' : 'Create account'"></span>
+                </button>
+            </div>
+        </form>
+
+        <p class="mt-8 text-center text-sm text-gray-600">
+            Already have an account?
+            <a href="{% url 'accounts:login' %}" class="font-medium text-blue-600 hover:text-blue-500">
+                Sign in
+            </a>
+        </p>
+    </div>
+</div>
+{% endblock %}
