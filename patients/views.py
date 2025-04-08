@@ -1,9 +1,9 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_http_methods
-from django.core.exceptions import ValidationError
-from django.views.generic import ListView, DetailView
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import ListView, DetailView
 from django.db.models import Count, Q, Min, Case, When, Value, CharField, OuterRef, Subquery
 from django.utils import timezone
 from .models import Patient, PatientMedication, AttendanceRecord, Medication
@@ -11,6 +11,7 @@ from django.template.loader import render_to_string
 import logging
 import random
 from datetime import datetime, timedelta
+from django.shortcuts import get_object_or_404
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ class PatientListView(LoginRequiredMixin, ListView):
         context['sort_by'] = self.request.GET.get('sort', '')
         context['sort_dir'] = self.request.GET.get('dir', 'asc')
         context['search_query'] = self.request.GET.get('search', '')
+        context['is_mobile'] = self.request.user_agent.is_mobile
         
         # Add medication status for each patient
         for patient in context['patients']:
@@ -115,6 +117,7 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
         
         context['active_medications'] = active_medications
         context['now'] = now
+        context['is_mobile'] = self.request.user_agent.is_mobile
         
         # Get recent attendance records across all medications
         recent_attendance = AttendanceRecord.objects.filter(
@@ -131,11 +134,133 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
         
         return context
 
+from django.shortcuts import render, redirect
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.http import require_http_methods
+from django.contrib.auth.decorators import login_required
+from django.template.loader import render_to_string
+from .models import Patient, PatientMedication, AttendanceRecord, Medication
+import random
+from datetime import datetime, timedelta
+
+@login_required
 def patient_list(request):
-    patients = Patient.objects.all()
-    return render(request, 'patients/patient_list.html', {'patients': patients})
+    sort_by = request.GET.get('sort', 'last_name')
+    order = request.GET.get('order', 'asc')
+    search_query = request.GET.get('search', '').strip()
+
+    # Start with all patients and prefetch related medications
+    patients = Patient.objects.all().prefetch_related(
+        'medications',
+        'medications__medication'
+    )
+
+    # Apply search filter if provided
+    if search_query:
+        patients = patients.filter(
+            Q(first_name__icontains=search_query) |
+            Q(last_name__icontains=search_query) |
+            Q(hospital_number__icontains=search_query) |
+            Q(medications__medication__name__icontains=search_query)
+        ).distinct()
+
+    # Apply sorting
+    if sort_by == 'name':
+        patients = patients.order_by(f'{"" if order == "asc" else "-"}last_name', 'first_name')
+    elif sort_by == 'next_appointment':
+        patients = patients.order_by(f'{"" if order == "asc" else "-"}medications__next_appointment')
+    elif sort_by == 'disease':
+        patients = patients.order_by(f'{"" if order == "asc" else "-"}medications__medication__disease')
+    else:
+        patients = patients.order_by(f'{"" if order == "asc" else "-"}{sort_by}')
+
+    context = {
+        'patients': patients,
+        'current_time': timezone.now(),  
+        'is_mobile': request.user_agent.is_mobile,
+    }
+
+    if request.headers.get('HX-Request'):
+        return render(request, 'patients/partials/patient_table_body.html', context)
+    return render(request, 'patients/patient_list.html', context)
+
+def generate_dummy_patient():
+    first_names = ["James", "Emma", "Oliver", "Sophia", "William", "Isabella", "Henry", "Charlotte", "George", "Ava"]
+    last_names = ["Smith", "Jones", "Williams", "Brown", "Taylor", "Davies", "Wilson", "Evans", "Thomas", "Johnson"]
+    medications = ["Mycophenalate", "Methotrexate", "Ibuprofen", "Amoxicillin", "Omeprazole", "Simvastatin", "Ramipril"]
+    frequencies = ["daily", "weekly", "biweekly", "monthly", "quarterly"]
+    diseases = ["Rheumatoid Arthritis", "Sarcoidoisis", "Asthma", "Bronchiectasis", "COPD", "Heart Disease", "Depression"]
+    doses = ["100mg", "250mg", "500mg", "1g", "2g", "5mg", "10mg", "20mg"]
+    
+    # Generate random dates within a reasonable range
+    dob = timezone.now() - timedelta(days=random.randint(365*20, 365*80))  # Age between 20-80
+    next_appointment = timezone.now() + timedelta(days=random.randint(1, 60))  # Next 1-60 days
+    last_attendance = timezone.now() - timedelta(days=random.randint(1, 30))  # Last 1-30 days
+    
+    return {
+        'first_name': random.choice(first_names),
+        'last_name': random.choice(last_names),
+        'date_of_birth': dob,
+        'nhs_number': f"{random.randint(1000000000, 9999999999)}",  # 10 digit number
+        'hospital_number': f"H{random.randint(10000, 99999)}",
+        'medication': random.choice(medications),
+        'disease': random.choice(diseases),
+        'frequency': random.choice(frequencies),
+        'next_appointment': next_appointment,
+        'last_attendance': last_attendance,
+        'dose': random.choice(doses),
+        'notes': f"Test patient created on {timezone.now().strftime('%Y-%m-%d')}"
+    }
 
 @require_http_methods(["POST"])
+def add_dummy_patient(request):
+    if request.method == 'POST':
+        try:
+            dummy_data = generate_dummy_patient()
+            
+            # Create the patient
+            patient = Patient.objects.create(
+                first_name=dummy_data['first_name'],
+                last_name=dummy_data['last_name'],
+                date_of_birth=dummy_data['date_of_birth'],
+                nhs_number=dummy_data['nhs_number'],
+                hospital_number=dummy_data['hospital_number']
+            )
+            
+            # Create medication
+            medication = Medication.objects.create(
+                name=dummy_data['medication'],
+                disease=dummy_data['disease'],
+                description=f"Medication for {dummy_data['disease']}"
+            )
+            
+            # Create patient medication link with all fields
+            patient_med = PatientMedication.objects.create(
+                patient=patient,
+                medication=medication,
+                frequency=dummy_data['frequency'],
+                next_appointment=dummy_data['next_appointment'],
+                dosage=dummy_data['dose'],
+                notes=dummy_data['notes'],
+                last_attendance_date=dummy_data['last_attendance'].date()
+            )
+            
+            # Create an attendance record
+            AttendanceRecord.objects.create(
+                patient_medication=patient_med,
+                date=dummy_data['last_attendance'],
+                notes="Initial attendance record"
+            )
+            
+            return render(request, 'patients/partials/patient_row.html', {
+                'patient': patient,
+                'current_time': timezone.now()
+            })
+        except Exception as e:
+            logger.error(f"Error adding dummy patient: {str(e)}")
+            return HttpResponse(f"Error adding dummy patient: {str(e)}", status=500)
+    return HttpResponseBadRequest()
+
 def add_patient(request):
     try:
         # Log the incoming data for debugging
@@ -192,58 +317,6 @@ def add_patient(request):
         logger.error(f"Error adding patient: {str(e)}")
         return HttpResponse(f"Error adding patient: {str(e)}", status=400)
 
-def generate_dummy_patient():
-    first_names = ["James", "Emma", "Oliver", "Sophia", "William", "Isabella", "Henry", "Charlotte", "George", "Ava"]
-    last_names = ["Smith", "Jones", "Williams", "Brown", "Taylor", "Davies", "Wilson", "Evans", "Thomas", "Johnson"]
-    medications = ["Aspirin", "Paracetamol", "Ibuprofen", "Amoxicillin", "Omeprazole", "Simvastatin", "Ramipril"]
-    frequencies = ["daily", "weekly", "biweekly", "monthly", "quarterly"]
-    
-    # Generate random dates within a reasonable range
-    dob = datetime.now() - timedelta(days=random.randint(365*20, 365*80))  # Age between 20-80
-    next_appointment = datetime.now() + timedelta(days=random.randint(1, 60))  # Next 1-60 days
-    
-    return {
-        'first_name': random.choice(first_names),
-        'last_name': random.choice(last_names),
-        'date_of_birth': dob.strftime('%Y-%m-%d'),
-        'nhs_number': f"{random.randint(1000000000, 9999999999)}",  # 10 digit number
-        'hospital_number': f"H{random.randint(10000, 99999)}",
-        'medication': random.choice(medications),
-        'frequency': random.choice(frequencies),
-        'next_appointment': next_appointment.strftime('%Y-%m-%dT%H:%M')
-    }
-
-@require_http_methods(["POST"])
-def add_dummy_patient(request):
-    if request.method == 'POST':
-        try:
-            dummy_data = generate_dummy_patient()
-            patient = Patient.objects.create(
-                first_name=dummy_data['first_name'],
-                last_name=dummy_data['last_name'],
-                date_of_birth=dummy_data['date_of_birth'],
-                nhs_number=dummy_data['nhs_number'],
-                hospital_number=dummy_data['hospital_number']
-            )
-            
-            # Create medication first
-            medication = Medication.objects.create(
-                name=dummy_data['medication']
-            )
-            
-            PatientMedication.objects.create(
-                patient=patient,
-                medication=medication,
-                frequency=dummy_data['frequency'],
-                next_appointment=dummy_data['next_appointment']
-            )
-            
-            return render(request, 'patients/partials/patient_row.html', {'patient': patient})
-        except Exception as e:
-            logger.error(f"Error adding dummy patient: {str(e)}")
-            return HttpResponse(f"Error adding dummy patient: {str(e)}", status=500)
-    return HttpResponseBadRequest()
-
 @require_http_methods(["GET"])
 def fetch_patient_details(request):
     hospital_number = request.GET.get('hospital_number')
@@ -256,3 +329,52 @@ def fetch_patient_details(request):
         'nhs_number': '123456789'
     }
     return JsonResponse(dummy_data)
+
+@login_required
+def patient_detail(request, patient_id):
+    patient = get_object_or_404(Patient, id=patient_id)
+    active_medications = patient.medications.filter(end_date__isnull=True)
+    
+    # Get attendance records through PatientMedication
+    recent_attendance = AttendanceRecord.objects.filter(
+        patient_medication__patient=patient
+    ).select_related('patient_medication__medication').order_by('-date')[:10]
+
+    # Get upcoming appointments
+    upcoming_appointments = PatientMedication.objects.filter(
+        patient=patient,
+        next_appointment__gt=timezone.now()
+    ).select_related('medication').order_by('next_appointment')[:5]
+
+    context = {
+        'patient': patient,
+        'active_medications': active_medications,
+        'recent_attendance': recent_attendance,
+        'upcoming_appointments': upcoming_appointments,
+        'current_time': timezone.now(),
+        'is_mobile': request.user_agent.is_mobile,
+    }
+
+    if request.headers.get('HX-Request'):
+        return render(request, 'patients/partials/patient_detail.html', context)
+    return render(request, 'patients/patient_detail.html', context)
+
+@login_required
+def edit_patient(request, patient_id):
+    patient = get_object_or_404(Patient, id=patient_id)
+    if request.method == 'POST':
+        # Handle form submission later
+        pass
+    if request.headers.get('HX-Request'):
+        return render(request, 'patients/partials/edit_patient.html', {'patient': patient, 'is_mobile': request.user_agent.is_mobile})
+    return render(request, 'patients/edit_patient.html', {'patient': patient, 'is_mobile': request.user_agent.is_mobile})
+
+@login_required
+def delete_patient(request, patient_id):
+    patient = get_object_or_404(Patient, id=patient_id)
+    if request.method == 'DELETE':
+        patient.delete()
+        return HttpResponse(status=200)
+    elif request.headers.get('HX-Request'):
+        return render(request, 'patients/partials/delete_confirm.html', {'patient': patient, 'is_mobile': request.user_agent.is_mobile})
+    return render(request, 'patients/delete_confirm.html', {'patient': patient, 'is_mobile': request.user_agent.is_mobile})

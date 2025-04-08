@@ -1,17 +1,43 @@
-<tr>
-    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
-        {{ patient.first_name }} {{ patient.last_name }}
+<tr class="hover:bg-gray-50">
+    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm sm:pl-6">
+        <div class="font-medium text-gray-900">{{ patient.first_name }} {{ patient.last_name }}</div>
+        <div class="text-gray-500">H{{ patient.hospital_number }} • {{ patient.date_of_birth|timesince }} old</div>
     </td>
     <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-        {{ patient.hospital_number }}
+        {% with active_med=patient.medications.all|first %}
+            {% if active_med %}
+                {{ active_med.medication.disease|default:"Not specified" }}
+            {% else %}
+                Not specified
+            {% endif %}
+        {% endwith %}
     </td>
-    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-        {{ patient.nhs_number }}
+    <td class="px-3 py-4 text-sm text-gray-500">
+        {% with active_med=patient.medications.all|first %}
+            {% if active_med %}
+                <div class="font-medium text-gray-900">{{ active_med.medication.name }}</div>
+                <div class="text-gray-500">{{ active_med.dose }}</div>
+            {% else %}
+                No active medications
+            {% endif %}
+        {% endwith %}
     </td>
-    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-        {{ patient.date_of_birth|date:"d M Y" }}
+    <td class="whitespace-nowrap px-3 py-4 text-sm">
+        {% with active_med=patient.medications.all|first %}
+            {% if active_med and active_med.next_appointment %}
+                <div class="font-medium text-gray-900">{{ active_med.next_appointment|date:"d M Y" }}</div>
+                {% with days_until=active_med.next_appointment|timeuntil:current_time %}
+                    <div class="text-gray-500">in {{ days_until }}</div>
+                {% endwith %}
+            {% else %}
+                <span class="text-gray-500">Not scheduled</span>
+            {% endif %}
+        {% endwith %}
     </td>
     <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-        <a href="{% url 'patients:patient_detail' patient.id %}" class="text-blue-600 hover:text-blue-900">View<span class="sr-only">, {{ patient.first_name }} {{ patient.last_name }}</span></a>
+        <a href="{% url 'patients:patient_detail' patient.id %}" 
+           hx-get="{% url 'patients:patient_detail' patient.id %}"
+           hx-target="#mainContent"
+           class="text-blue-600 hover:text-blue-900">View<span class="sr-only">, {{ patient.first_name }} {{ patient.last_name }}</span></a>
     </td>
 </tr>

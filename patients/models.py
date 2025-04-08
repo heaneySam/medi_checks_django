@@ -7,7 +7,8 @@ from accounts.models import User
 # Create your models here.
 
 class Medication(models.Model):
-    name = models.CharField(max_length=200)
+    name = models.CharField(max_length=100)
+    disease = models.CharField(max_length=100, null=True, blank=True)
     description = models.TextField(blank=True)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -17,6 +18,8 @@ class Medication(models.Model):
         ordering = ['name']
 
     def __str__(self):
+        if self.disease:
+            return f"{self.name} ({self.disease})"
         return self.name
 
 class Patient(models.Model):
