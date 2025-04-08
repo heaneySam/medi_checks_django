@@ -378,3 +378,34 @@ def delete_patient(request, patient_id):
     elif request.headers.get('HX-Request'):
         return render(request, 'patients/partials/delete_confirm.html', {'patient': patient, 'is_mobile': request.user_agent.is_mobile})
     return render(request, 'patients/delete_confirm.html', {'patient': patient, 'is_mobile': request.user_agent.is_mobile})
+
+@login_required
+def patient_list(request):
+    patients = Patient.objects.all().order_by('first_name')
+    sort = request.GET.get('sort')
+    search = request.GET.get('search')
+
+    if search:
+        patients = patients.filter(
+            Q(first_name__icontains=search) | 
+            Q(last_name__icontains=search) |
+            Q(medications__medication__disease__icontains=search) |
+            Q(medications__medication__name__icontains=search)
+        ).distinct()
+
+    if sort == 'name':
+        patients = patients.order_by('first_name')
+    elif sort == 'disease':
+        patients = patients.order_by('medications__medication__disease')
+    elif sort == 'next_appointment':
+        patients = patients.order_by('medications__next_appointment')
+
+    context = {
+        'patients': patients,
+        'is_mobile': request.user_agent.is_mobile,
+        'current_time': timezone.now(),
+    }
+    
+    if request.headers.get('HX-Request'):
+        return render(request, 'patients/partials/patient_table_body.html', context)
+    return render(request, 'patients/patient_list.html', context)
