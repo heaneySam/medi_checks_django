@@ -24,6 +24,7 @@ class PatientListView(LoginRequiredMixin, ListView):
     paginate_by = 20
 
     def get_queryset(self):
+        logger.debug("PatientListView.get_queryset called")
         # Get next appointment for each patient
         next_appointments = PatientMedication.objects.filter(
             patient=OuterRef('pk')
@@ -48,8 +49,19 @@ class PatientListView(LoginRequiredMixin, ListView):
             queryset = queryset.filter(
                 Q(first_name__icontains=search_query) |
                 Q(last_name__icontains=search_query) |
-                Q(nhs_number__icontains=search_query)
-            )
+                Q(nhs_number__icontains=search_query) |
+                Q(hospital_number__icontains=search_query) |
+                Q(medications__medication__disease__icontains=search_query) |
+                Q(medications__medication__name__icontains=search_query)
+            ).distinct()
+
+        # Add select_related and prefetch_related to optimize queries
+        queryset = queryset.select_related().prefetch_related(
+            'medications',
+            'medications__medication'
+        )
+
+        logger.debug(f"Initial queryset count: {queryset.count()}")
 
         # Sorting
         sort_by = self.request.GET.get('sort', '')
@@ -69,12 +81,15 @@ class PatientListView(LoginRequiredMixin, ListView):
         return queryset.order_by(*order_by)
 
     def get_context_data(self, **kwargs):
+        logger.debug("PatientListView.get_context_data called")
         context = super().get_context_data(**kwargs)
         context['sort_by'] = self.request.GET.get('sort', '')
         context['sort_dir'] = self.request.GET.get('dir', 'asc')
         context['search_query'] = self.request.GET.get('search', '')
         context['is_mobile'] = self.request.user_agent.is_mobile
         
+        logger.debug(f"Context data: {context}")
+
         # Add medication status for each patient
         for patient in context['patients']:
             worst_status = 'green'
@@ -91,6 +106,9 @@ class PatientListView(LoginRequiredMixin, ListView):
             
             patient.worst_status = 'none' if not has_medications else worst_status
             
+        if self.request.headers.get('HX-Request'):
+            self.template_name = 'patients/partials/patient_table_body.html'
+        
         return context
 
 class PatientDetailView(LoginRequiredMixin, DetailView):
@@ -143,53 +161,13 @@ from .models import Patient, PatientMedication, AttendanceRecord, Medication
 import random
 from datetime import datetime, timedelta
 
-@login_required
-def patient_list(request):
-    sort_by = request.GET.get('sort', 'last_name')
-    order = request.GET.get('order', 'asc')
-    search_query = request.GET.get('search', '').strip()
-
-    # Start with all patients and prefetch related medications
-    patients = Patient.objects.all().prefetch_related(
-        'medications',
-        'medications__medication'
-    )
-
-    # Apply search filter if provided
-    if search_query:
-        patients = patients.filter(
-            Q(first_name__icontains=search_query) |
-            Q(last_name__icontains=search_query) |
-            Q(hospital_number__icontains=search_query) |
-            Q(medications__medication__name__icontains=search_query)
-        ).distinct()
-
-    # Apply sorting
-    if sort_by == 'name':
-        patients = patients.order_by(f'{"" if order == "asc" else "-"}last_name', 'first_name')
-    elif sort_by == 'next_appointment':
-        patients = patients.order_by(f'{"" if order == "asc" else "-"}medications__next_appointment')
-    elif sort_by == 'disease':
-        patients = patients.order_by(f'{"" if order == "asc" else "-"}medications__medication__disease')
-    else:
-        patients = patients.order_by(f'{"" if order == "asc" else "-"}{sort_by}')
-
-    context = {
-        'patients': patients,
-        'current_time': timezone.now(),  
-        'is_mobile': request.user_agent.is_mobile,
-    }
-
-    if request.headers.get('HX-Request'):
-        return render(request, 'patients/partials/patient_table_body.html', context)
-    return render(request, 'patients/patient_list.html', context)
 
 def generate_dummy_patient():
     first_names = ["James", "Emma", "Oliver", "Sophia", "William", "Isabella", "Henry", "Charlotte", "George", "Ava"]
     last_names = ["Smith", "Jones", "Williams", "Brown", "Taylor", "Davies", "Wilson", "Evans", "Thomas", "Johnson"]
-    medications = ["Mycophenalate", "Methotrexate", "Ibuprofen", "Amoxicillin", "Omeprazole", "Simvastatin", "Ramipril"]
+    medications = ["Mycophenalate", "Methotrexate", "Methylprednisolone", "Azathioprine", "Cyclophosphamide", "Rituximab", "Tocilizumab"]
     frequencies = ["daily", "weekly", "biweekly", "monthly", "quarterly"]
-    diseases = ["Rheumatoid Arthritis", "Sarcoidoisis", "Asthma", "Bronchiectasis", "COPD", "Heart Disease", "Depression"]
+    diseases = ["Rheumatoid Arthritis", "Sarcoidoisis", "Idiopathic Pulmonary Fibrosis", "Bronchiectasis", "Granulomatosis with Polyangiitis (GPA)", "Pulmonary Langerhans Cell Histiocytosis", "Hypersensitivity Pneumonitis"]
     doses = ["100mg", "250mg", "500mg", "1g", "2g", "5mg", "10mg", "20mg"]
     
     # Generate random dates within a reasonable range
@@ -212,55 +190,74 @@ def generate_dummy_patient():
         'notes': f"Test patient created on {timezone.now().strftime('%Y-%m-%d')}"
     }
 
-@require_http_methods(["POST"])
+@login_required
 def add_dummy_patient(request):
-    if request.method == 'POST':
-        try:
-            dummy_data = generate_dummy_patient()
-            
-            # Create the patient
-            patient = Patient.objects.create(
-                first_name=dummy_data['first_name'],
-                last_name=dummy_data['last_name'],
-                date_of_birth=dummy_data['date_of_birth'],
-                nhs_number=dummy_data['nhs_number'],
-                hospital_number=dummy_data['hospital_number']
-            )
-            
-            # Create medication
-            medication = Medication.objects.create(
-                name=dummy_data['medication'],
-                disease=dummy_data['disease'],
-                description=f"Medication for {dummy_data['disease']}"
-            )
-            
-            # Create patient medication link with all fields
-            patient_med = PatientMedication.objects.create(
-                patient=patient,
-                medication=medication,
-                frequency=dummy_data['frequency'],
-                next_appointment=dummy_data['next_appointment'],
-                dosage=dummy_data['dose'],
-                notes=dummy_data['notes'],
-                last_attendance_date=dummy_data['last_attendance'].date()
-            )
-            
-            # Create an attendance record
-            AttendanceRecord.objects.create(
-                patient_medication=patient_med,
-                date=dummy_data['last_attendance'],
-                notes="Initial attendance record"
-            )
-            
-            return render(request, 'patients/partials/patient_row.html', {
-                'patient': patient,
-                'current_time': timezone.now()
-            })
-        except Exception as e:
-            logger.error(f"Error adding dummy patient: {str(e)}")
-            return HttpResponse(f"Error adding dummy patient: {str(e)}", status=500)
-    return HttpResponseBadRequest()
+    """Add a dummy patient for testing purposes."""
+    try:
+        logger.info("Starting add_dummy_patient")
+        
+        # Generate and log dummy data
+        dummy_data = generate_dummy_patient()
+        logger.debug(f"Generated dummy data: {dummy_data}")
+        
+        # Create the patient
+        patient = Patient.objects.create(
+            first_name=dummy_data['first_name'],
+            last_name=dummy_data['last_name'],
+            date_of_birth=dummy_data['date_of_birth'],
+            nhs_number=dummy_data['nhs_number'],
+            hospital_number=dummy_data['hospital_number']
+        )
+        logger.debug(f"Created patient: {patient.id} - {patient.first_name} {patient.last_name}")
+        
+        # Create medication
+        medication = Medication.objects.create(
+            name=dummy_data['medication'],
+            disease=dummy_data['disease'],
+            description=f"Medication for {dummy_data['disease']}"
+        )
+        logger.debug(f"Created medication: {medication.id} - {medication.name}")
+        
+        # Create patient medication link
+        patient_med = PatientMedication.objects.create(
+            patient=patient,
+            medication=medication,
+            frequency=dummy_data['frequency'],
+            next_appointment=dummy_data['next_appointment'],
+            dosage=dummy_data['dose'],
+            notes=dummy_data['notes'],
+            last_attendance_date=dummy_data['last_attendance'].date()
+        )
+        logger.debug(f"Created patient medication: {patient_med.id}")
+        
+        # Create attendance record
+        attendance = AttendanceRecord.objects.create(
+            patient_medication=patient_med,
+            date=dummy_data['last_attendance'],
+            notes="Initial attendance record"
+        )
+        logger.debug(f"Created attendance record: {attendance.id}")
+        
+        # Get all patients for the table refresh
+        patients = Patient.objects.all().order_by('first_name')
+        
+        # Prepare context
+        context = {
+            'patients': patients,
+            'is_mobile': request.user_agent.is_mobile,
+            'current_time': timezone.now(),
+        }
+        
+        # Return just the table container for HTMX to swap
+        return render(request, 'patients/partials/patient_table_body.html', context)
+    except ValidationError as e:
+        logger.error(f"Validation error: {str(e)}")
+        return HttpResponse(str(e), status=400)
+    except Exception as e:
+        logger.error(f"Error adding dummy patient: {str(e)}")
+        return HttpResponse(f"Error adding dummy patient: {str(e)}", status=400)
 
+@login_required
 def add_patient(request):
     try:
         # Log the incoming data for debugging
@@ -271,45 +268,36 @@ def add_patient(request):
             'first_name': request.POST.get('first_name'),
             'last_name': request.POST.get('last_name'),
             'nhs_number': request.POST.get('nhs_number') or None,
-            'hospital_number': request.POST.get('hospital_number') or None
+            'hospital_number': request.POST.get('hospital_number') or None,
+            'date_of_birth': request.POST.get('date_of_birth'),
         }
         
-        # Handle date of birth
-        dob = request.POST.get('date_of_birth')
-        if dob and dob.strip():
-            patient_data['date_of_birth'] = dob
-        
-        # Validate required fields
-        if not patient_data['first_name'] or not patient_data['last_name']:
-            raise ValidationError("First name and last name are required")
-
         patient = Patient.objects.create(**patient_data)
-
-        # Create medication if provided
-        medication_name = request.POST.get('medication')
-        if medication_name and medication_name.strip():
-            medication = Medication.objects.create(
-                name=medication_name.strip()
-            )
-
-            # Create patient medication relationship if frequency is provided
-            frequency = request.POST.get('frequency')
-            if frequency and frequency.strip():
-                patient_med_data = {
-                    'patient': patient,
-                    'medication': medication,
-                    'frequency': frequency.strip(),
-                }
+        
+        # If medication data is provided, create PatientMedication
+        if request.POST.get('medication'):
+            medication = Medication.objects.get(id=request.POST.get('medication'))
+            patient_med_data = {
+                'patient': patient,
+                'medication': medication,
+                'dosage': request.POST.get('dosage'),
+                'frequency': request.POST.get('frequency'),
+                'start_date': timezone.now(),
+            }
+            
+            if request.POST.get('next_appointment'):
+                patient_med_data['next_appointment'] = request.POST.get('next_appointment')
                 
-                # Add next appointment if provided
-                next_appointment = request.POST.get('next_appointment')
-                if next_appointment and next_appointment.strip():
-                    patient_med_data['next_appointment'] = next_appointment
-                
-                PatientMedication.objects.create(**patient_med_data)
+            PatientMedication.objects.create(**patient_med_data)
 
-        # Return the new patient row HTML
-        return render(request, 'patients/partials/patient_row.html', {'patient': patient})
+        # Return the complete updated table
+        patients = Patient.objects.all().order_by('first_name')
+        context = {
+            'patients': patients,
+            'is_mobile': request.user_agent.is_mobile,
+            'current_time': timezone.now(),
+        }
+        return render(request, 'patients/partials/patient_table_body.html', context)
     except ValidationError as e:
         logger.error(f"Validation error: {str(e)}")
         return HttpResponse(str(e), status=400)
@@ -317,7 +305,6 @@ def add_patient(request):
         logger.error(f"Error adding patient: {str(e)}")
         return HttpResponse(f"Error adding patient: {str(e)}", status=400)
 
-@require_http_methods(["GET"])
 def fetch_patient_details(request):
     hospital_number = request.GET.get('hospital_number')
     # TODO: Implement actual API call here
@@ -374,38 +361,13 @@ def delete_patient(request, patient_id):
     patient = get_object_or_404(Patient, id=patient_id)
     if request.method == 'DELETE':
         patient.delete()
-        return HttpResponse(status=200)
+        patients = Patient.objects.annotate(
+            medication_count=Count('medications')
+        ).prefetch_related('medications')
+        return render(request, 'patients/partials/patient_table_body.html', {
+            'patients': patients,
+            'is_mobile': request.user_agent.is_mobile,
+        })
     elif request.headers.get('HX-Request'):
         return render(request, 'patients/partials/delete_confirm.html', {'patient': patient, 'is_mobile': request.user_agent.is_mobile})
     return render(request, 'patients/delete_confirm.html', {'patient': patient, 'is_mobile': request.user_agent.is_mobile})
-
-@login_required
-def patient_list(request):
-    patients = Patient.objects.all().order_by('first_name')
-    sort = request.GET.get('sort')
-    search = request.GET.get('search')
-
-    if search:
-        patients = patients.filter(
-            Q(first_name__icontains=search) | 
-            Q(last_name__icontains=search) |
-            Q(medications__medication__disease__icontains=search) |
-            Q(medications__medication__name__icontains=search)
-        ).distinct()
-
-    if sort == 'name':
-        patients = patients.order_by('first_name')
-    elif sort == 'disease':
-        patients = patients.order_by('medications__medication__disease')
-    elif sort == 'next_appointment':
-        patients = patients.order_by('medications__next_appointment')
-
-    context = {
-        'patients': patients,
-        'is_mobile': request.user_agent.is_mobile,
-        'current_time': timezone.now(),
-    }
-    
-    if request.headers.get('HX-Request'):
-        return render(request, 'patients/partials/patient_table_body.html', context)
-    return render(request, 'patients/patient_list.html', context)

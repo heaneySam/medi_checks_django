@@ -54,6 +54,13 @@ class Patient(models.Model):
     def full_name(self):
         return f"{self.first_name} {self.last_name}"
 
+    @property
+    def age(self):
+        """Calculate age in years from date of birth."""
+        from datetime import date
+        today = date.today()
+        return today.year - self.date_of_birth.year - ((today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day))
+
 class PatientMedication(models.Model):
     STATUS_GREEN = 'green'
     STATUS_AMBER = 'amber'
